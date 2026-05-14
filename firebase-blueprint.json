@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account details, roles, and CMRIT data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "voter"] },
+        "collegeData": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Election": {
+      "title": "Election",
+      "description": "Details of a voting election",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "posts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of positions available (e.g. President, VP)"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "uid": { "type": "string" },
+              "name": { "type": "string" },
+              "post": { "type": "string" },
+              "votes": { "type": "integer" }
+            }
+          }
+        },
+        "status": { "type": "string", "enum": ["nomination", "ongoing", "ended"] },
+        "resultsVisible": { "type": "boolean", "description": "Whether students can see results" },
+        "voterBatches": { "type": "array" },
+        "candidateBatches": { "type": "array" },
+        "contractAddress": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "status", "creatorId"]
+    },
+    "Nomination": {
+      "title": "Nomination",
+      "description": "Candidate nomination request",
+      "type": "object",
+      "properties": {
+        "candidateName": { "type": "string" },
+        "candidateUid": { "type": "string" },
+        "postTitle": { "type": "string", "description": "The position they are applying for" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "statement": { "type": "string" },
+        "collegeData": { "type": "object" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "VoteRecord": {
+      "title": "Vote Record",
+      "description": "Prevention of double voting",
+      "type": "object",
+      "properties": {
+        "voterUid": { "type": "string" },
+        "votedPosts": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/elections/{electionId}": { "schema": "Election", "description": "Election instances" },
+    "/elections/{electionId}/nominations/{nominationId}": { "schema": "Nomination", "description": "Candidate nominations" },
+    "/elections/{electionId}/votes/{userId}": { "schema": "VoteRecord", "description": "Double-vote prevention" }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Votereum",
+  "description": "A decentralized voting platform powered by Ethereum smart contracts and a secure Node.js backend. Features role-based access control, tamper-proof voting, and real-time result visualization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

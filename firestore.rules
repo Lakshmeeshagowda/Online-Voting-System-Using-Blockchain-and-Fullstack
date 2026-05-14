@@ -1,0 +1,89 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isAdmin() { 
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isSignedIn() && exists(userPath) && get(userPath).data.role == 'admin'; 
+    }
+    function getUserData() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath) ? get(userPath).data : null;
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // CMRIT Specific Helpers
+    function getElection(electionId) {
+      let path = /databases/$(database)/documents/elections/$(electionId);
+      return exists(path) ? get(path).data : null;
+    }
+    
+    function isEligibleVoter(electionId) {
+      let user = getUserData();
+      let election = getElection(electionId);
+      return (user == null || election == null) ? isAdmin() :
+             (isAdmin() || (user.collegeData.admissionYear != null && user.collegeData.admissionYear in election.voterBatches));
+    }
+    
+    function isEligibleCandidate(electionId) {
+      let user = getUserData();
+      let election = getElection(electionId);
+      return (user == null || election == null) ? isAdmin() :
+             (isAdmin() || (user.collegeData.admissionYear != null && user.collegeData.admissionYear in election.candidateBatches));
+    }
+
+    // Global Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Elections
+    match /elections/{electionId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        isEligibleVoter(electionId) && 
+        getElection(electionId).status == 'ongoing' &&
+        // Strict guard: only allow updating the candidates array
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['candidates'])
+      );
+      allow delete: if isAdmin();
+      
+      // Nominations Sub-collection
+      match /nominations/{nominationId} {
+        allow list: if isAdmin() || (isSignedIn() && resource.data.candidateUid == request.auth.uid);
+        allow get: if isSignedIn();
+        allow create: if isEligibleCandidate(electionId) && 
+                      getElection(electionId).status == 'nomination' &&
+                      isValidId(electionId);
+        allow update: if isAdmin();
+      }
+
+      // Votes Sub-collection (Prevention of double voting)
+      match /votes/{userId} {
+        allow get: if isSignedIn();
+        allow create: if isEligibleVoter(electionId) && 
+                      request.auth.uid == userId &&
+                      getElection(electionId).status == 'ongoing';
+        allow update: if isEligibleVoter(electionId) && 
+                      request.auth.uid == userId &&
+                      getElection(electionId).status == 'ongoing';
+      }
+    }
+  }
+}
