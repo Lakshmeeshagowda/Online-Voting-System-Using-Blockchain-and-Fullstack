@@ -14,4 +14,4 @@ export const ELECTION_ABI = [
 ];
 
 // After deploying to Ganache, update this address
-export const CONTRACT_ADDRESS = "0x1fCce957F59D72871e3f4419e738F07b42380E7d";
+export const CONTRACT_ADDRESS = "0x6107a176654153b87528FD6bCE7cceaBc3Bf46e0";

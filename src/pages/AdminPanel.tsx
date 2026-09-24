@@ -20,8 +20,25 @@ export default function AdminPanel() {
   const [success, setSuccess] = useState(false);
   const [nominationEndDate, setNominationEndDate] = useState('');
   
-  const [voterBatches, setVoterBatches] = useState<number[]>([22, 23, 24, 25]);
-  const [candidateBatches, setCandidateBatches] = useState<number[]>([22, 23]);
+  const BATCH_OPTIONS = Array.from({ length: 13 }, (_, i) => 23 + i); // [23..35]
+
+  const getBatchRange = (start: number, end: number): number[] => {
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    const range: number[] = [];
+    for (let b = min; b <= max; b++) {
+      range.push(b);
+    }
+    return range;
+  };
+
+  const [voterStartBatch, setVoterStartBatch] = useState<number>(23);
+  const [voterEndBatch, setVoterEndBatch] = useState<number>(26);
+  const [candidateStartBatch, setCandidateStartBatch] = useState<number>(23);
+  const [candidateEndBatch, setCandidateEndBatch] = useState<number>(25);
+
+  const voterBatches = getBatchRange(voterStartBatch, voterEndBatch);
+  const candidateBatches = getBatchRange(candidateStartBatch, candidateEndBatch);
 
   const [elections, setElections] = useState<any[]>([]);
   const [nominations, setNominations] = useState<any[]>([]);
@@ -36,14 +53,6 @@ export default function AdminPanel() {
 
   const removePost = (post: string) => {
     setPosts(posts.filter(p => p !== post));
-  };
-
-  const toggleBatch = (batch: number, type: 'voter' | 'candidate') => {
-    if (type === 'voter') {
-      setVoterBatches(prev => prev.includes(batch) ? prev.filter(b => b !== batch) : [...prev, batch]);
-    } else {
-      setCandidateBatches(prev => prev.includes(batch) ? prev.filter(b => b !== batch) : [...prev, batch]);
-    }
   };
 
   useEffect(() => {
@@ -351,44 +360,90 @@ export default function AdminPanel() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Voter Batches Dropdowns */}
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                     <Users size={14} className="text-[#38bdf8]" />
                     Voter Batches
                   </label>
-                  <div className="flex gap-2 flex-wrap">
-                    {[22, 23, 24, 25].map(year => (
-                      <button
-                        key={year}
-                        type="button"
-                        onClick={() => toggleBatch(year, 'voter')}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                          voterBatches.includes(year) ? 'bg-[#38bdf8] text-[#020617]' : 'bg-[#1e293b] text-slate-500'
-                        }`}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Start Batch</span>
+                      <select
+                        value={voterStartBatch}
+                        onChange={(e) => setVoterStartBatch(Number(e.target.value))}
+                        className="w-full bg-[#020617] border border-[#1e293b] rounded-xl p-3 text-white text-xs font-bold outline-none focus:border-[#38bdf8] transition-all"
+                        style={{ colorScheme: 'dark' }}
                       >
-                        {year}
-                      </button>
+                        {BATCH_OPTIONS.map((b) => (
+                          <option key={b} value={b}>Batch {b}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">End Batch</span>
+                      <select
+                        value={voterEndBatch}
+                        onChange={(e) => setVoterEndBatch(Number(e.target.value))}
+                        className="w-full bg-[#020617] border border-[#1e293b] rounded-xl p-3 text-white text-xs font-bold outline-none focus:border-[#38bdf8] transition-all"
+                        style={{ colorScheme: 'dark' }}
+                      >
+                        {BATCH_OPTIONS.map((b) => (
+                          <option key={b} value={b}>Batch {b}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 items-center pt-1">
+                    <span className="text-[10px] text-slate-500 font-medium">Eligible Voters:</span>
+                    {voterBatches.map((b) => (
+                      <span key={b} className="px-2 py-0.5 bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/20 rounded text-[9px] font-bold">
+                        Batch {b}
+                      </span>
                     ))}
                   </div>
                 </div>
 
+                {/* Nominator Batches Dropdowns */}
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                     <Users size={14} className="text-[#818cf8]" />
-                    Candidate Batches
+                    Nominator Batches
                   </label>
-                  <div className="flex gap-2 flex-wrap">
-                    {[22, 23, 24, 25].map(year => (
-                      <button
-                        key={year}
-                        type="button"
-                        onClick={() => toggleBatch(year, 'candidate')}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                          candidateBatches.includes(year) ? 'bg-[#818cf8] text-[#020617]' : 'bg-[#1e293b] text-slate-500'
-                        }`}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Start Batch</span>
+                      <select
+                        value={candidateStartBatch}
+                        onChange={(e) => setCandidateStartBatch(Number(e.target.value))}
+                        className="w-full bg-[#020617] border border-[#1e293b] rounded-xl p-3 text-white text-xs font-bold outline-none focus:border-[#818cf8] transition-all"
+                        style={{ colorScheme: 'dark' }}
                       >
-                        {year}
-                      </button>
+                        {BATCH_OPTIONS.map((b) => (
+                          <option key={b} value={b}>Batch {b}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">End Batch</span>
+                      <select
+                        value={candidateEndBatch}
+                        onChange={(e) => setCandidateEndBatch(Number(e.target.value))}
+                        className="w-full bg-[#020617] border border-[#1e293b] rounded-xl p-3 text-white text-xs font-bold outline-none focus:border-[#818cf8] transition-all"
+                        style={{ colorScheme: 'dark' }}
+                      >
+                        {BATCH_OPTIONS.map((b) => (
+                          <option key={b} value={b}>Batch {b}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 items-center pt-1">
+                    <span className="text-[10px] text-slate-500 font-medium">Eligible Nominators:</span>
+                    {candidateBatches.map((b) => (
+                      <span key={b} className="px-2 py-0.5 bg-[#818cf8]/10 text-[#818cf8] border border-[#818cf8]/20 rounded text-[9px] font-bold">
+                        Batch {b}
+                      </span>
                     ))}
                   </div>
                 </div>

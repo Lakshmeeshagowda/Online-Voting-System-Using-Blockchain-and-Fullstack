@@ -258,7 +258,7 @@ export default function ElectionPage() {
              <div className="px-2 py-0.5 bg-[#38bdf8]/10 text-[#38bdf8] text-[10px] font-bold rounded uppercase tracking-widest border border-[#38bdf8]/20">CMRIT Governance</div>
           </div>
           <h1 className="text-4xl font-bold tracking-tight text-white line-height-none">Active Proposals</h1>
-          <p className="text-slate-400">Restricted to authorized college batches (22, 23, 24, 25).</p>
+          <p className="text-slate-400">Restricted to authorized college batches (e.g., Batch 23 to 35).</p>
         </header>
       )}
 
