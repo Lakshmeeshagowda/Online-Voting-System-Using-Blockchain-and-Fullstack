@@ -100,9 +100,9 @@ export default function App() {
                     <Sidebar />
                     <div className="flex-1 ml-72 flex flex-col min-h-screen transition-all duration-500">
                       <header className="h-24 px-12 flex items-center justify-between border-b border-[#1e293b] bg-[#020617]/50 backdrop-blur-sm sticky top-0 z-40">
-                         <div className="font-black text-xs uppercase tracking-[0.4em] text-slate-600 flex items-center gap-4">
+                         <div className="font-black text-xs uppercase tracking-[0.4em] text-[#38bdf8] flex items-center gap-4">
                             <div className="w-1.5 h-1.5 bg-[#38bdf8] rounded-full animate-pulse"></div>
-                            Ganache Local
+                            Sepolia Testnet
                          </div>
                          <div className="flex items-center gap-4">
                             <WalletConnect />
