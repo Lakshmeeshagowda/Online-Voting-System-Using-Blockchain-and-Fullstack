@@ -11,7 +11,9 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "compile": "hardhat compile --config hardhat.config.cjs",
-    "deploy": "node scripts/deploy.cjs"
+    "deploy": "hardhat run scripts/deploy.cjs --network ganache",
+    "deploy:sepolia": "hardhat run scripts/deploy.cjs --network sepolia",
+    "deploy:amoy": "hardhat run scripts/deploy.cjs --network amoy"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",

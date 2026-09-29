@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 const GANACHE_CHAIN_ID = '0x539'; // 1337 in hex
+const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
+const AMOY_CHAIN_ID = '0x13882'; // 80002 in hex
+
+const SUPPORTED_CHAINS = [GANACHE_CHAIN_ID, SEPOLIA_CHAIN_ID, AMOY_CHAIN_ID];
 
 interface WalletContextType {
   account: string | null;
@@ -11,6 +15,7 @@ interface WalletContextType {
   balance: string | null;
   connectWallet: () => Promise<void>;
   switchToGanache: () => Promise<void>;
+  switchToSepolia: () => Promise<void>;
   error: string | null;
 }
 
@@ -24,7 +29,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [error, setError] = useState<string | null>(null);
 
   const isMetaMaskInstalled = typeof window !== 'undefined' && Boolean(window.ethereum);
-  const isCorrectNetwork = chainId === GANACHE_CHAIN_ID;
+  const isCorrectNetwork = Boolean(chainId && SUPPORTED_CHAINS.includes(chainId.toLowerCase()));
 
   const fetchBalance = useCallback(async (addr: string) => {
     if (!window.ethereum) return;
@@ -142,6 +147,35 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const switchToSepolia = async () => {
+    if (!window.ethereum) return;
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: SEPOLIA_CHAIN_ID }],
+      });
+    } catch (switchError: any) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: SEPOLIA_CHAIN_ID,
+              chainName: 'Sepolia Test Network',
+              nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+              rpcUrls: ['https://rpc.sepolia.org'],
+              blockExplorerUrls: ['https://sepolia.etherscan.io'],
+            }],
+          });
+        } catch (addError: any) {
+          setError('Failed to add Sepolia network: ' + addError.message);
+        }
+      } else {
+        setError('Failed to switch network: ' + switchError.message);
+      }
+    }
+  };
+
   return (
     <WalletContext.Provider value={{
       account,
@@ -152,6 +186,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       balance,
       connectWallet,
       switchToGanache,
+      switchToSepolia,
       error,
     }}>
       {children}
