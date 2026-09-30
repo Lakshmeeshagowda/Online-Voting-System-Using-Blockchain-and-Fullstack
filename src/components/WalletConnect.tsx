@@ -1,9 +1,9 @@
 import { useWallet } from '../hooks/useWallet';
-import { Wallet, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
+import { ShieldCheck, Loader2, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
-// MetaMask fox SVG icon (simplified inline)
+// MetaMask fox SVG icon
 function MetaMaskIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 284.65 284.65" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -24,38 +24,10 @@ function shortAddr(addr: string) {
 }
 
 export default function WalletConnect() {
-  const { account, balance, isCorrectNetwork, isConnecting, isMetaMaskInstalled, connectWallet, switchToGanache, error } = useWallet();
+  const { account, balance, isConnecting, isMetaMaskInstalled, connectWallet, error } = useWallet();
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Not installed
-  if (!isMetaMaskInstalled) {
-    return (
-      <a
-        href="https://metamask.io/download/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-xl text-[11px] font-bold uppercase tracking-widest hover:bg-orange-500/20 transition-all"
-      >
-        <AlertTriangle size={13} />
-        Install MetaMask
-      </a>
-    );
-  }
-
-  // Wrong network
-  if (account && !isCorrectNetwork) {
-    return (
-      <button
-        onClick={switchToGanache}
-        className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-[11px] font-bold uppercase tracking-widest hover:bg-red-500/20 transition-all animate-pulse"
-      >
-        <AlertTriangle size={13} />
-        Wrong Network — Switch to Ganache
-      </button>
-    );
-  }
-
-  // Connected
+  // Connected via MetaMask
   if (account) {
     return (
       <div className="relative">
@@ -95,10 +67,9 @@ export default function WalletConnect() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] text-slate-500">Network</span>
-                  <span className="text-[10px] font-bold text-emerald-400">Ganache Local</span>
+                  <span className="text-[10px] font-bold text-emerald-400">Sepolia Testnet</span>
                 </div>
               </div>
-              <p className="text-[9px] text-slate-600 text-center">Switch accounts in MetaMask directly</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -106,29 +77,31 @@ export default function WalletConnect() {
     );
   }
 
-  // Not connected
+  // Zero-Extension Mode (Default for smooth user experience)
   return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        onClick={connectWallet}
-        disabled={isConnecting}
-        id="wallet-connect-btn"
-        className="flex items-center gap-2.5 px-4 py-2.5 bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8] rounded-xl text-[11px] font-bold uppercase tracking-widest hover:bg-[#38bdf8]/20 hover:border-[#38bdf8]/60 transition-all disabled:opacity-50 active:scale-95"
-      >
-        {isConnecting ? (
-          <>
-            <Loader2 size={13} className="animate-spin" />
-            Connecting...
-          </>
-        ) : (
-          <>
-            <MetaMaskIcon size={16} />
-            Connect MetaMask
-          </>
-        )}
-      </button>
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 px-3.5 py-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl text-[11px] font-bold tracking-wider uppercase">
+        <ShieldCheck size={14} className="text-emerald-400" />
+        <span>Gasless Web3 Active</span>
+      </div>
+
+      {isMetaMaskInstalled && (
+        <button
+          onClick={connectWallet}
+          disabled={isConnecting}
+          id="wallet-connect-btn"
+          className="flex items-center gap-2 px-3.5 py-2 bg-[#0f172a] border border-[#1e293b] text-slate-300 rounded-xl text-[11px] font-bold uppercase tracking-widest hover:border-[#38bdf8]/50 hover:text-white transition-all disabled:opacity-50"
+        >
+          {isConnecting ? (
+            <Loader2 size={13} className="animate-spin text-[#38bdf8]" />
+          ) : (
+            <MetaMaskIcon size={15} />
+          )}
+          <span className="hidden sm:inline">MetaMask</span>
+        </button>
+      )}
       {error && (
-        <p className="text-[9px] text-red-400 font-bold max-w-[220px] text-right leading-relaxed">{error}</p>
+        <p className="text-[9px] text-red-400 font-bold max-w-[200px] text-right">{error}</p>
       )}
     </div>
   );

@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useAuth } from '../hooks/useAuth';
 import { useWallet } from '../hooks/useWallet';
-import { Plus, Trash2, Save, Users, Calendar, Hash, Check, X, Bell, Wallet, AlertTriangle } from 'lucide-react';
-import { collection, addDoc, query, getDocs, doc, updateDoc, getDoc, where, onSnapshot } from 'firebase/firestore';
+import { Plus, Users, Calendar, Hash, X, Bell, ShieldCheck, ExternalLink } from 'lucide-react';
+import { collection, addDoc, query, doc, updateDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { db } from '../firebase';
 import { blockchain } from '../lib/blockchain';
@@ -11,13 +11,14 @@ import { CONTRACT_ADDRESS } from '../constants';
 
 export default function AdminPanel() {
   const { user, role } = useAuth();
-  const { account, isCorrectNetwork, connectWallet, isConnecting } = useWallet();
+  const { account } = useWallet();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [newPost, setNewPost] = useState('');
   const [posts, setPosts] = useState<string[]>(['President', 'Vice President', 'General Secretary', 'Technical Head']);
   const [isCreating, setIsCreating] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   const [nominationEndDate, setNominationEndDate] = useState('');
   
   const BATCH_OPTIONS = Array.from({ length: 13 }, (_, i) => 23 + i); // [23..35]
@@ -84,16 +85,8 @@ export default function AdminPanel() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!account) {
-      alert('Please connect your MetaMask wallet first (click "Connect MetaMask" in the header).');
-      return;
-    }
-    if (!isCorrectNetwork) {
-      alert('Wrong network. Please switch MetaMask to Ganache Local (Chain ID: 1337).');
-      return;
-    }
-
     setIsCreating(true);
+    setLastTxHash(null);
     try {
       const contract = await blockchain.getContract();
       const endTime = nominationEndDate ? Math.floor(new Date(nominationEndDate).getTime() / 1000) : 0;
@@ -108,6 +101,7 @@ export default function AdminPanel() {
       );
       
       await tx.wait();
+      setLastTxHash(tx.hash);
 
       const count = await contract.electionsCount();
       const blockchainId = parseInt(count.toString());
@@ -125,11 +119,12 @@ export default function AdminPanel() {
         createdAt: new Date().toISOString(),
         creatorId: user?.uid,
         blockchainId,
-        contractAddress: CONTRACT_ADDRESS
+        contractAddress: CONTRACT_ADDRESS,
+        txHash: tx.hash
       });
 
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      setTimeout(() => setSuccess(false), 5000);
       setTitle('');
       setDescription('');
     } catch (error) {
@@ -141,31 +136,21 @@ export default function AdminPanel() {
   };
 
   const handleUpdateStatus = async (electionId: string, status: string, blockchainId: number) => {
-    if (!account) {
-      alert('Please connect your MetaMask wallet first.');
-      return;
-    }
-    if (!isCorrectNetwork) {
-      alert('Wrong network. Please switch to Ganache Local.');
-      return;
-    }
     try {
       const contract = await blockchain.getContract();
       const tx = await contract.updateStatus(blockchainId, status);
       await tx.wait();
 
       await updateDoc(doc(db, 'elections', electionId), { status });
-      alert(`Election status updated to ${status} on blockchain.`);
+      alert(`Election status updated to "${status}" on Sepolia blockchain.`);
     } catch (error) {
       const msg = blockchain.handleError(error);
       alert(msg);
     }
   };
 
-  const handleCloseNomination = async (electionId: string, blockchainId: number) => {
+  const handleCloseNomination = async (electionId: string) => {
     try {
-      // In contract, we can enforce nomination end date via timestamp, 
-      // but here we manually close in Firestore too.
       await updateDoc(doc(db, 'elections', electionId), { 
         nominationEndDate: new Date().toISOString() 
       });
@@ -176,14 +161,6 @@ export default function AdminPanel() {
   };
 
   const handleApproveNomination = async (nomination: any) => {
-    if (!account) {
-      alert('Please connect your MetaMask wallet first.');
-      return;
-    }
-    if (!isCorrectNetwork) {
-      alert('Wrong network. Please switch to Ganache Local.');
-      return;
-    }
     try {
         const electionRef = doc(db, 'elections', selectedElectionId!);
         const electionDoc = await getDoc(electionRef);
@@ -191,7 +168,6 @@ export default function AdminPanel() {
         const electionData = electionDoc.data();
         const blockchainElectionId = electionData.blockchainId;
 
-        // 1. Approve on Blockchain
         const contract = await blockchain.getContract();
         if (!nomination.blockchainCandidateId) {
             alert("Nomination mapping mismatch. Ensure candidate is registered on-chain.");
@@ -201,7 +177,6 @@ export default function AdminPanel() {
         const tx = await contract.approveCandidate(blockchainElectionId, nomination.blockchainCandidateId);
         await tx.wait();
 
-        // 2. Update Firestore
         const currentCandidates = electionData.candidates || [];
         const newCandidate = {
             id: nomination.blockchainCandidateId.toString(),
@@ -221,7 +196,7 @@ export default function AdminPanel() {
             status: 'approved'
         });
 
-        alert(`Approved ${nomination.candidateName} as candidate on blockchain.`);
+        alert(`Approved ${nomination.candidateName} as candidate on Sepolia blockchain.`);
     } catch (error) {
         const msg = blockchain.handleError(error);
         alert(msg);
@@ -240,7 +215,7 @@ export default function AdminPanel() {
   };
 
   const handleNotifyStudents = (electionId: string) => {
-    alert(`Notifications sent! All eligible CMRIT students have been notified about ${electionId}.`);
+    alert(`Notifications sent! All eligible CMRIT students have been notified about election ${electionId}.`);
   };
 
   return (
@@ -254,39 +229,38 @@ export default function AdminPanel() {
           <p className="text-[#38bdf8] font-bold tracking-widest text-[10px] uppercase">CMRIT Admin Console</p>
           <h1 className="text-4xl font-bold tracking-tight text-white">Election Management</h1>
         </div>
-        {/* Wallet Status Banner */}
-        {!account ? (
-          <div className="flex items-center justify-between p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl">
-            <div className="flex items-center gap-3">
-              <AlertTriangle size={16} className="text-orange-400" />
-              <div>
-                <p className="text-orange-400 font-bold text-sm">Wallet Not Connected</p>
-                <p className="text-orange-400/70 text-[11px]">Connect MetaMask to create elections and approve candidates on-chain.</p>
-              </div>
-            </div>
-            <button
-              onClick={connectWallet}
-              disabled={isConnecting}
-              className="px-4 py-2 bg-orange-500/20 border border-orange-500/40 text-orange-400 rounded-xl text-[11px] font-bold uppercase tracking-widest hover:bg-orange-500/30 transition-all disabled:opacity-50"
-            >
-              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-            </button>
-          </div>
-        ) : !isCorrectNetwork ? (
-          <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-            <AlertTriangle size={16} className="text-red-400" />
+
+        {/* Gasless & Wallet Status Banner */}
+        <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+          <div className="flex items-center gap-3">
+            <ShieldCheck size={20} className="text-emerald-400" />
             <div>
-              <p className="text-red-400 font-bold text-sm">Wrong Network Detected</p>
-              <p className="text-red-400/70 text-[11px]">Switch MetaMask to Ganache Local (Chain ID: 1337, RPC: http://127.0.0.1:7545).</p>
+              <p className="text-emerald-400 font-bold text-sm">Gasless Web3 Active</p>
+              <p className="text-emerald-400/80 text-[11px]">Zero browser extension required. All transactions are securely signed and deployed to Sepolia Testnet.</p>
             </div>
           </div>
-        ) : (
-          <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]" />
-            <p className="text-emerald-400 text-[11px] font-bold font-mono">Admin wallet connected: {account.slice(0, 10)}...{account.slice(-4)}</p>
-          </div>
-        )}
+          {account && (
+            <span className="text-[10px] font-mono text-emerald-400/90 font-bold hidden md:inline">
+              MetaMask: {account.slice(0, 6)}...{account.slice(-4)}
+            </span>
+          )}
+        </div>
       </header>
+
+      {success && lastTxHash && (
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/40 rounded-xl flex items-center justify-between">
+          <p className="text-emerald-400 text-xs font-bold">🎉 Election successfully deployed on Sepolia Blockchain!</p>
+          <a
+            href={blockchain.getEtherscanTxUrl(lastTxHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] text-[#38bdf8] hover:underline font-bold"
+          >
+            <span>View Proof on Etherscan</span>
+            <ExternalLink size={13} />
+          </a>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
@@ -454,12 +428,12 @@ export default function AdminPanel() {
                 disabled={isCreating}
                 className="w-full py-4 bg-[#38bdf8] text-[#020617] rounded-xl font-black text-xs uppercase tracking-widest hover:bg-[#38bdf8]/90 transition-all shadow-lg active:scale-[0.98]"
               >
-                {isCreating ? "Deploying To Blockchain..." : "Launch On-Chain Election"}
+                {isCreating ? "Deploying To Sepolia Blockchain..." : "Launch On-Chain Election"}
               </button>
             </form>
           </section>
 
-          {/* Ongoing Management */}
+          {/* Management Dashboard */}
           <section className="bg-[#0f172a] p-10 rounded-2xl border border-[#1e293b] space-y-8">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Calendar className="text-[#38bdf8]" size={20} /> Management Dashboard
@@ -493,7 +467,7 @@ export default function AdminPanel() {
                      {election.status === 'nomination' && (
                         <>
                            <button
-                             onClick={() => handleCloseNomination(election.id, election.blockchainId)}
+                             onClick={() => handleCloseNomination(election.id)}
                              className="px-4 py-2 bg-[#1e293b] text-white text-[10px] font-black uppercase rounded-lg border border-red-500/30 hover:bg-red-500/10 transition-all"
                            >
                               Freeze Nominations
@@ -522,55 +496,7 @@ export default function AdminPanel() {
                            Open Nominations
                         </button>
                      )}
-                     {election.status === 'ended' && (
-                       <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                         <Check size={14} className="text-emerald-500" /> Election Finalized
-                       </span>
-                     )}
                   </div>
-
-                  {(election.status === 'ended' || election.status === 'ongoing') && (
-                    <div className="pt-4 border-t border-[#1e293b] space-y-4">
-                       <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                            {election.status === 'ongoing' ? 'Live Consensus Tally' : 'Election Results Controls'}
-                          </p>
-                          {election.status === 'ended' && (
-                            <button 
-                              onClick={async () => {
-                                await updateDoc(doc(db, 'elections', election.id), { resultsVisible: !election.resultsVisible });
-                              }}
-                              className={`px-3 py-1 rounded text-[9px] font-bold uppercase transition-all ${
-                                election.resultsVisible ? 'bg-emerald-500 text-[#020617]' : 'bg-[#1e293b] text-slate-400'
-                              }`}
-                            >
-                                {election.resultsVisible ? 'Results Public' : 'Results Hidden'}
-                            </button>
-                          )}
-                       </div>
-                       <div className="bg-[#0f172a] p-4 rounded-xl border border-[#1e293b] space-y-3">
-                          {election.candidates && election.candidates.length > 0 ? (
-                            <div className="space-y-3">
-                              {(election.posts || []).map((post: string) => (
-                                <div key={post} className="space-y-1">
-                                   <p className="text-[9px] font-black text-[#38bdf8] uppercase tracking-tighter">{post}</p>
-                                   <div className="space-y-1 pl-2 border-l border-[#1e293b]">
-                                     {(election.candidates as any[]).filter((c: any) => c.post === post).map((c: any) => (
-                                       <div key={c.id} className="flex items-center justify-between text-[11px]">
-                                          <span className="text-slate-300">{c.name}</span>
-                                          <span className="text-white font-mono font-bold">{c.votes || 0}</span>
-                                        </div>
-                                      ))}
-                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-[10px] text-slate-600 uppercase font-bold tracking-widest text-center">No votes recorded</p>
-                          )}
-                       </div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -609,7 +535,6 @@ export default function AdminPanel() {
                          </div>
                          <p className="text-[10px] text-[#38bdf8] font-black uppercase tracking-tighter">Position: {nom.postTitle}</p>
                          <p className="text-xs text-slate-400 line-clamp-3 italic mb-2">"{nom.statement}"</p>
-                         <p className="text-[9px] text-slate-500 font-bold uppercase">Batch {nom.collegeData?.admissionYear} | {nom.collegeData?.department}</p>
                          
                          {nom.status === 'pending' && (
                            <div className="flex gap-2 pt-2">

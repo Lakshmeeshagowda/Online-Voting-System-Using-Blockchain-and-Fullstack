@@ -1,9 +1,9 @@
 import { motion } from 'motion/react';
 import { useAuth } from '../hooks/useAuth';
 import { useWallet } from '../hooks/useWallet';
-import { Vote, ChevronRight, CheckCircle2, Lock, Clock, Info, Users, PieChart, Wallet } from 'lucide-react';
+import { ChevronRight, CheckCircle2, Lock, Clock, Users, PieChart, ShieldCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, query, getDocs, addDoc, doc, updateDoc, getDoc, setDoc, runTransaction, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, addDoc, doc, updateDoc, getDoc, setDoc, onSnapshot, where } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { db } from '../firebase';
 import { blockchain } from '../lib/blockchain';
@@ -13,18 +13,9 @@ interface Candidate {
   name: string;
 }
 
-interface Election {
-  id: string;
-  title: string;
-  description: string;
-  candidates: Candidate[];
-  status: 'upcoming' | 'ongoing' | 'ended';
-  contractAddress?: string;
-}
-
 export default function ElectionPage() {
   const { user, role, collegeData } = useAuth();
-  const { account, isCorrectNetwork, connectWallet, isConnecting } = useWallet();
+  const { account } = useWallet();
   const [elections, setElections] = useState<any[]>([]);
   const [selectedElection, setSelectedElection] = useState<any | null>(null);
   const [votedPosts, setVotedPosts] = useState<string[]>([]);
@@ -75,7 +66,7 @@ export default function ElectionPage() {
         };
         fetchVotes();
         
-        // Also sync votes from blockchain for transparent results
+        // Sync votes from blockchain for transparent results
         const syncVotes = async () => {
           try {
               const contract = await blockchain.getContract(false);
@@ -114,7 +105,6 @@ export default function ElectionPage() {
         where('candidateUid', '==', user.uid)
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        // Since we filter by candidateUid, there should only be one or zero docs
         const doc = snapshot.docs[0];
         setUserNomination(doc ? { id: doc.id, ...doc.data() } : null);
       }, (error) => {
@@ -127,16 +117,6 @@ export default function ElectionPage() {
   const handleNominate = async () => {
     if (!selectedElection || !user) return;
 
-    // Wallet check
-    if (!account) {
-      alert('Please connect your MetaMask wallet first (click "Connect MetaMask" in the top header).');
-      return;
-    }
-    if (!isCorrectNetwork) {
-      alert('Wrong network. Please switch MetaMask to Ganache Local (Chain ID: 1337).');
-      return;
-    }
-    
     const canNominate = role === 'admin' || isCandidateEligible;
     if (!canNominate) {
       alert("You are not eligible to nominate for this election.");
@@ -155,7 +135,6 @@ export default function ElectionPage() {
 
     setNominating(true);
     try {
-      // 1. Transaction on Blockchain
       const contract = await blockchain.getContract();
       const tx = await contract.nominate(
         selectedElection.blockchainId,
@@ -166,16 +145,21 @@ export default function ElectionPage() {
       
       const receipt = await tx.wait();
       
-      // Get candidate ID from event
-      const event = receipt.logs.find((log: any) => {
-          try {
-              return contract.interface.parseLog(log)?.name === 'Nominated';
-          } catch (e) { return false; }
-      });
-      const parsedLog = contract.interface.parseLog(event);
-      const blockchainCandidateId = parseInt(parsedLog?.args.candidateId.toString());
+      let blockchainCandidateId = 1;
+      try {
+        const event = receipt.logs.find((log: any) => {
+            try {
+                return contract.interface.parseLog(log)?.name === 'Nominated';
+            } catch (e) { return false; }
+        });
+        const parsedLog = contract.interface.parseLog(event);
+        if (parsedLog) {
+          blockchainCandidateId = parseInt(parsedLog.args.candidateId.toString());
+        }
+      } catch (e) {
+        console.warn("Could not parse Candidate ID event, using fallback ID 1", e);
+      }
 
-      // 2. Mirror to Firestore
       await addDoc(collection(db, `elections/${selectedElection.id}/nominations`), {
         candidateName: user.displayName || user.email?.split('@')[0] || "Candidate",
         candidateUid: user.uid,
@@ -184,11 +168,11 @@ export default function ElectionPage() {
         statement: nominationStatement,
         blockchainCandidateId,
         blockchainElectionId: selectedElection.blockchainId,
-        collegeData: collegeData || { admissionYear: 'N/A', department: 'Blockchain User' },
+        collegeData: collegeData || { admissionYear: 'N/A', department: 'CMRIT Student' },
         createdAt: new Date().toISOString()
       });
 
-      alert("Nomination successfully mined on blockchain and pending review.");
+      alert("Nomination successfully registered on Sepolia blockchain!");
       setNominationStatement('');
       setNominationPost('');
     } catch (error) {
@@ -205,16 +189,6 @@ export default function ElectionPage() {
       return;
     }
 
-    // Wallet check
-    if (!account) {
-      alert('Please connect your MetaMask wallet first (click "Connect MetaMask" in the top header).');
-      return;
-    }
-    if (!isCorrectNetwork) {
-      alert('Wrong network. Please switch MetaMask to Ganache Local (Chain ID: 1337).');
-      return;
-    }
-
     if (votedPosts.includes(postTitle)) {
       alert(`You have already cast your vote for ${postTitle}.`);
       return;
@@ -222,12 +196,10 @@ export default function ElectionPage() {
     
     setIsCasting(true);
     try {
-      // 1. Transaction on Blockchain
       const contract = await blockchain.getContract();
       const tx = await contract.vote(selectedElection.blockchainId, parseInt(blockchainCandidateId));
       await tx.wait();
 
-      // 2. Mirror status to Firestore to prevent double vote check skipping
       const voteRef = doc(db, `elections/${selectedElection.id}/votes`, user.uid);
       const newVotedPosts = [...votedPosts, postTitle];
       await setDoc(voteRef, { 
@@ -237,7 +209,7 @@ export default function ElectionPage() {
       }, { merge: true });
 
       setVotedPosts(newVotedPosts);
-      alert("Vote confirmed on the blockchain!");
+      alert("Vote confirmed on Sepolia Blockchain!");
     } catch (error: any) {
       const msg = blockchain.handleError(error);
       alert(msg);
@@ -256,9 +228,13 @@ export default function ElectionPage() {
         <header className="space-y-2">
           <div className="flex items-center gap-2 mb-2">
              <div className="px-2 py-0.5 bg-[#38bdf8]/10 text-[#38bdf8] text-[10px] font-bold rounded uppercase tracking-widest border border-[#38bdf8]/20">CMRIT Governance</div>
+             <div className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[10px] font-bold rounded uppercase tracking-widest border border-emerald-500/20 flex items-center gap-1">
+               <ShieldCheck size={12} />
+               <span>Gasless Web3</span>
+             </div>
           </div>
           <h1 className="text-4xl font-bold tracking-tight text-white line-height-none">Active Proposals</h1>
-          <p className="text-slate-400">Restricted to authorized college batches (e.g., Batch 23 to 35).</p>
+          <p className="text-slate-400">1-Click Voting powered by Ethereum Sepolia Smart Contracts.</p>
         </header>
       )}
 
@@ -379,59 +355,54 @@ export default function ElectionPage() {
                                      <p className="text-[10px] text-slate-500 uppercase font-black mb-2">My Statement</p>
                                      <p className="text-xs text-slate-400 italic line-clamp-3">{userNomination.statement}</p>
                                   </div>
-                                  <p className="text-[10px] text-center text-slate-600 font-medium">
-                                    {userNomination.status === 'pending' 
-                                      ? "Governance board is currently auditing your credentials. Your nomination eligibility is now locked."
-                                      : "Application process finalized. Nomination eligibility remains locked for this cycle."}
-                                  </p>
                                </div>
                              </div>
                            ) : isNominationExpired ? (
-                              <div className="p-10 border border-dashed border-[#1e293b] rounded-2xl text-center space-y-4">
-                                 <div className="w-12 h-12 bg-[#1e293b] rounded-full flex items-center justify-center mx-auto text-slate-600">
-                                    <Lock size={20} />
-                                 </div>
-                                 <div className="space-y-1">
-                                    <p className="text-white font-bold uppercase tracking-tight">Nomination Phase Expired</p>
-                                    <p className="text-xs text-slate-500">The application deadline was {new Date(selectedElection.nominationEndDate).toLocaleString()}.</p>
-                                 </div>
-                              </div>
-                           ) : (
-                             <div className="space-y-4">
-                               <p className="text-sm text-slate-400">You are eligible to nominate yourself as a candidate for this election.</p>
-                               
-                               <div className="space-y-2">
-                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Select Position</label>
-                                 <select 
-                                   value={nominationPost}
-                                   onChange={(e) => setNominationPost(e.target.value)}
-                                   className="w-full bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-white text-sm outline-none"
-                                 >
-                                   <option value="">Choose a post...</option>
-                                   {(selectedElection.posts || ['President', 'Vice President', 'Secretary']).map((p: string) => (
-                                     <option key={p} value={p}>{p}</option>
-                                   ))}
-                                 </select>
+                               <div className="p-10 border border-dashed border-[#1e293b] rounded-2xl text-center space-y-4">
+                                  <div className="w-12 h-12 bg-[#1e293b] rounded-full flex items-center justify-center mx-auto text-slate-600">
+                                     <Lock size={20} />
+                                  </div>
+                                  <div className="space-y-1">
+                                     <p className="text-white font-bold uppercase tracking-tight">Nomination Phase Expired</p>
+                                     <p className="text-xs text-slate-500">The application deadline was {new Date(selectedElection.nominationEndDate).toLocaleString()}.</p>
+                                  </div>
                                </div>
+                           ) : (
+                              <div className="space-y-4">
+                                <p className="text-sm text-slate-400">You are eligible to nominate yourself as a candidate for this election.</p>
+                                
+                                <div className="space-y-2">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Select Position</label>
+                                  <select 
+                                    value={nominationPost}
+                                    onChange={(e) => setNominationPost(e.target.value)}
+                                    className="w-full bg-[#0f172a] border border-[#1e293b] rounded-xl p-3 text-white text-sm outline-none"
+                                  >
+                                    <option value="">Choose a post...</option>
+                                    {(selectedElection.posts || ['President', 'Vice President', 'Secretary']).map((p: string) => (
+                                      <option key={p} value={p}>{p}</option>
+                                    ))}
+                                  </select>
+                                </div>
 
-                               <textarea 
-                                  value={nominationStatement}
-                                  onChange={(e) => setNominationStatement(e.target.value)}
-                                  placeholder="Describe your vision and why students should vote for you..."
-                                  className="w-full bg-[#0f172a] border border-[#1e293b] rounded-xl p-4 text-white text-sm min-h-[120px] outline-none"
-                               />
-                               <button 
-                                disabled={nominating}
-                                onClick={handleNominate}
-                                className="w-full py-4 bg-[#38bdf8] text-[#020617] rounded-xl font-bold hover:bg-[#38bdf8]/90 transition-all disabled:opacity-50"
-                               >
-                                {nominating ? "Submitting..." : "Submit Nomination"}
-                               </button>
-                             </div>
+                                <textarea 
+                                   value={nominationStatement}
+                                   onChange={(e) => setNominationStatement(e.target.value)}
+                                   placeholder="Describe your vision and why students should vote for you..."
+                                   className="w-full bg-[#0f172a] border border-[#1e293b] rounded-xl p-4 text-white text-sm min-h-[120px] outline-none"
+                                />
+                                <button 
+                                 disabled={nominating}
+                                 onClick={handleNominate}
+                                 className="w-full py-4 bg-[#38bdf8] text-[#020617] rounded-xl font-bold hover:bg-[#38bdf8]/90 transition-all disabled:opacity-50"
+                                >
+                                 {nominating ? "Submitting Nomination to Blockchain..." : "Submit Nomination"}
+                                </button>
+                              </div>
                            )}
                         </div>
                       ) : (
-                        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-center">
+                        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs text-center font-bold">
                           Ineligible for Nomination. Only batches ({selectedElection.candidateBatches?.join(', ') || '22, 23'}) can nominate.
                         </div>
                       )}
@@ -448,7 +419,7 @@ export default function ElectionPage() {
                           </div>
                           <div>
                              <h3 className="text-xl font-bold text-white tracking-tight">Consensus Results</h3>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Election Tally Finalized</p>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Election Tally Finalized on Sepolia</p>
                           </div>
                        </div>
                        <div className="grid gap-6">
@@ -473,7 +444,7 @@ export default function ElectionPage() {
                                                style={{ width: `${Math.min(100, (c.votes || 0) * 10)}%` }}
                                              ></div>
                                           </div>
-                                          <span className="text-xs font-mono font-bold text-[#38bdf8]">{c.votes || 0}</span>
+                                          <span className="text-xs font-mono font-bold text-[#38bdf8]">{c.votes || 0} Votes</span>
                                        </div>
                                     </div>
                                  ))}
@@ -513,7 +484,7 @@ export default function ElectionPage() {
                                         <div className="flex justify-between items-start mb-4">
                                            <div>
                                               <h4 className="font-bold text-white">{candidate.name}</h4>
-                                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{candidate.department || 'CMRIT'}</p>
+                                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{candidate.department || 'CMRIT Student'}</p>
                                            </div>
                                            {votedPosts.includes(post) && (
                                               <div className="bg-emerald-500/10 text-emerald-400 p-1.5 rounded-lg border border-emerald-500/20">
@@ -531,7 +502,7 @@ export default function ElectionPage() {
                                             : 'bg-[#38bdf8] text-[#020617] hover:bg-[#38bdf8]/90'
                                           }`}
                                         >
-                                          {votedPosts.includes(post) ? 'Vote Recorded' : 'Cast Transaction'}
+                                          {votedPosts.includes(post) ? 'Vote Recorded' : 'Cast Vote On-Chain'}
                                         </button>
                                      </div>
                                    ))
@@ -554,8 +525,8 @@ export default function ElectionPage() {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Election Details</h3>
                   <div className="space-y-6">
                      <div>
-                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Network Hub</p>
-                        <p className="text-[11px] font-mono text-[#38bdf8] truncate">CMRIT Mainnet v2.0</p>
+                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Network Security</p>
+                        <p className="text-[11px] font-mono text-[#38bdf8] truncate">Ethereum Sepolia Testnet</p>
                      </div>
                      <div>
                         <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Eligible Batches</p>
@@ -592,8 +563,8 @@ export default function ElectionPage() {
               <div className="absolute inset-0 rounded-full border-2 border-[#38bdf8] border-t-transparent animate-spin"></div>
             </div>
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-white">Signing Transaction</h2>
-              <p className="text-slate-400 text-sm">Interacting with Ethereum nodes. Your vote is being hashed and stored on the immutable ledger.</p>
+              <h2 className="text-2xl font-bold text-white">Recording Vote on Blockchain</h2>
+              <p className="text-slate-400 text-sm">Interacting with Ethereum Sepolia nodes. Your vote is being hashed and stored on the immutable ledger.</p>
             </div>
           </motion.div>
         </div>
